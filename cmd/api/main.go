@@ -64,6 +64,7 @@ func main() {
 }
 
 func registerRoutes(mux *http.ServeMux, conn *sql.DB) {
+	authH := handlers.NewAuthHandler(conn)
 	merchantH := handlers.NewMerchantHandler(conn)
 	productH := handlers.NewProductHandler(conn)
 	orderH := handlers.NewOrderHandler(conn)
@@ -77,9 +78,12 @@ func registerRoutes(mux *http.ServeMux, conn *sql.DB) {
 		w.Write([]byte("ok"))
 	})
 
-	// --- Merchant onboarding ---
-	mux.HandleFunc("POST /api/v1/merchants", merchantH.Register)
+	// --- Merchant profile ---
 	mux.Handle("GET /api/v1/merchants/me", auth(http.HandlerFunc(merchantH.Me)))
+
+	// --- Auth ---
+	mux.HandleFunc("POST /api/v1/auth/register", authH.Register)
+	mux.HandleFunc("POST /api/v1/auth/login", authH.Login)
 
 	// --- Products ---
 	// Get-by-id is public so it can power a storefront/checkout page.

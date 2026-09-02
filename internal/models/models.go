@@ -1,11 +1,12 @@
 package models
 
 type Merchant struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Email     string `json:"email"`
-	APIKey    string `json:"api_key,omitempty"`
-	CreatedAt string `json:"created_at"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Email        string `json:"email"`
+	APIKey       string `json:"api_key,omitempty"`
+	PasswordHash string `json:"-"`
+	CreatedAt    string `json:"created_at"`
 }
 
 type Product struct {

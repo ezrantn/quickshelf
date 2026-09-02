@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	_ "modernc.org/sqlite" // pure-Go SQLite driver, no CGO needed
+	_ "modernc.org/sqlite"
 )
 
 // Open opens (and creates, if missing) the SQLite database at path.

@@ -29,9 +29,9 @@ func RequireMerchant(conn *sql.DB) func(http.Handler) http.Handler {
 
 			var m models.Merchant
 			err := conn.QueryRowContext(r.Context(),
-				`SELECT id, name, email, api_key, created_at FROM merchants WHERE api_key = ?`,
+				`SELECT id, name, email, password_hash, api_key, created_at FROM merchants WHERE api_key = ?`,
 				key,
-			).Scan(&m.ID, &m.Name, &m.Email, &m.APIKey, &m.CreatedAt)
+			).Scan(&m.ID, &m.Name, &m.Email, &m.PasswordHash, &m.APIKey, &m.CreatedAt)
 
 			switch {
 			case err == sql.ErrNoRows:
