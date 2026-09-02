@@ -1,0 +1,580 @@
+openapi: 3.0.3
+info:
+  title: Quickshelf API
+  description: >
+    Merchant of Record platform API — merchant onboarding, product catalog,
+    and checkout/order settlement. Auth is a single API key per merchant,
+    sent via the `X-API-Key` header.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: Merchants
+  - name: Products
+  - name: Orders
+
+security: []
+
+paths:
+  /healthz:
+    get:
+      tags: [Merchants]
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: Service is up
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+
+  /api/v1/merchants:
+    post:
+      tags: [Merchants]
+      summary: Register a new merchant
+      description: >
+        Creates a merchant account and returns its API key. The key is
+        only ever returned in this response — store it securely, there is
+        no "show again" endpoint.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterMerchantRequest"
+            example:
+              name: Budi Store
+              email: budi@example.com
+      responses:
+        "201":
+          description: Merchant created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Merchant"
+              example:
+                id: mch_3a9f1c2b7e0d
+                name: Budi Store
+                email: budi@example.com
+                api_key: sk_9f2c7a1b3e8d4f5061a2b3c4d5e6f708
+                created_at: "2026-09-01T09:00:00.000Z"
+        "422":
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/merchants/me:
+    get:
+      tags: [Merchants]
+      summary: Get the authenticated merchant's profile
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Merchant profile (API key omitted)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MerchantPublic"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/products:
+    post:
+      tags: [Products]
+      summary: Create a product
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertProductRequest"
+            example:
+              name: Ebook Go Backend
+              description: A practical guide to building REST APIs in Go.
+              price_cents: 49000
+              currency: IDR
+      responses:
+        "201":
+          description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "422":
+          description: Invalid product payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      tags: [Products]
+      summary: List the authenticated merchant's products
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+
+  /api/v1/products/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    get:
+      tags: [Products]
+      summary: Get a product by id (public — used by storefront/checkout pages)
+      security: []
+      responses:
+        "200":
+          description: Product found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      tags: [Products]
+      summary: Update a product
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertProductRequest"
+      responses:
+        "200":
+          description: Product updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "403":
+          description: Product belongs to a different merchant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [Products]
+      summary: Delete a product
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "204":
+          description: Product deleted
+        "403":
+          description: Product belongs to a different merchant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/checkout:
+    post:
+      tags: [Orders]
+      summary: Start a checkout (public, buyer-facing)
+      description: >
+        Creates an order in `pending` status. All items in one checkout must
+        belong to the same merchant. Settle the order via
+        `/orders/{id}/complete` once payment is confirmed.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutRequest"
+            example:
+              customer_email: buyer@example.com
+              customer_name: Ani
+              items:
+                - product_id: prod_7c1e2f9a0b3d
+                  quantity: 1
+      responses:
+        "201":
+          description: Order created (pending)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "422":
+          description: Invalid checkout payload (bad product, empty cart, mixed merchants)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orders:
+    get:
+      tags: [Orders]
+      summary: List the authenticated merchant's orders
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+
+  /api/v1/orders/{id}:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    get:
+      tags: [Orders]
+      summary: Get an order by id
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Order found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "403":
+          description: Order belongs to a different merchant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orders/{id}/complete:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    post:
+      tags: [Orders]
+      summary: Mark an order as paid
+      description: >
+        In production, call this from your payment provider's webhook
+        (after verifying its signature) instead of trusting the merchant's
+        own API key — see the README for details.
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Order updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orders/{id}/fail:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    post:
+      tags: [Orders]
+      summary: Mark an order as failed
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Order updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orders/{id}/refund:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    post:
+      tags: [Orders]
+      summary: Mark an order as refunded
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Order updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    ProductId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: prod_7c1e2f9a0b3d
+    OrderId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: ord_1f4b9e2a6c8d
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      example:
+        error: "product not found"
+
+    RegisterMerchantRequest:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+
+    Merchant:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        api_key:
+          type: string
+          description: Only present in the register response.
+        created_at:
+          type: string
+          format: date-time
+
+    MerchantPublic:
+      allOf:
+        - $ref: "#/components/schemas/Merchant"
+      description: Same as Merchant but api_key is always omitted.
+
+    UpsertProductRequest:
+      type: object
+      required: [name, price_cents]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price_cents:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Price in the smallest currency unit (e.g. cents, sen).
+        currency:
+          type: string
+          default: USD
+          example: IDR
+        is_active:
+          type: boolean
+          default: true
+
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        price_cents:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      example:
+        id: prod_7c1e2f9a0b3d
+        merchant_id: mch_3a9f1c2b7e0d
+        name: Ebook Go Backend
+        description: A practical guide to building REST APIs in Go.
+        price_cents: 49000
+        currency: IDR
+        is_active: true
+        created_at: "2026-09-01T09:05:00.000Z"
+        updated_at: "2026-09-01T09:05:00.000Z"
+
+    CheckoutItem:
+      type: object
+      required: [product_id]
+      properties:
+        product_id:
+          type: string
+        quantity:
+          type: integer
+          format: int64
+          default: 1
+          minimum: 1
+
+    CheckoutRequest:
+      type: object
+      required: [customer_email, items]
+      properties:
+        customer_email:
+          type: string
+          format: email
+        customer_name:
+          type: string
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CheckoutItem"
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: string
+        order_id:
+          type: string
+        product_id:
+          type: string
+        quantity:
+          type: integer
+          format: int64
+        unit_price_cents:
+          type: integer
+          format: int64
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+        merchant_id:
+          type: string
+        customer_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, paid, failed, refunded]
+        total_cents:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        payment_provider:
+          type: string
+        payment_ref:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItem"
+      example:
+        id: ord_1f4b9e2a6c8d
+        merchant_id: mch_3a9f1c2b7e0d
+        customer_id: cus_5e0a1b2c3d4f
+        status: pending
+        total_cents: 49000
+        currency: IDR
+        payment_provider: ""
+        payment_ref: ""
+        created_at: "2026-09-01T09:10:00.000Z"
+        updated_at: "2026-09-01T09:10:00.000Z"
+        items:
+          - id: itm_2b3c4d5e6f70
+            order_id: ord_1f4b9e2a6c8d
+            product_id: prod_7c1e2f9a0b3d
+            quantity: 1
+            unit_price_cents: 49000
